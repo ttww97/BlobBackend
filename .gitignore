@@ -1,0 +1,127 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### IntelliJ IDEA ###
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/compiler.xml
+.idea/libraries/
+*.iws
+*.iml
+*.ipr
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### Frontend (Next.js) ###
+# Dependencies
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+frontend/.pnp.cjs
+
+# Testing
+frontend/coverage/
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Production
+frontend/build/
+
+# Misc
+frontend/.DS_Store
+frontend/*.pem
+
+# Debug
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Local env files
+frontend/.env*.local
+frontend/.env
+
+# Vercel
+frontend/.vercel
+
+# TypeScript
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# Contentlayer
+frontend/.contentlayer
+
+# Yarn
+frontend/.yarn/*
+!frontend/.yarn/patches
+!frontend/.yarn/plugins
+!frontend/.yarn/releases
+!frontend/.yarn/sdks
+!frontend/.yarn/versions
+
+### Build Artifacts ###
+build/
+target/
+
+### Logs ###
+*.log
+logs/
+
+### Runtime data ###
+pids
+*.pid
+*.seed
+*.pid.lock
+
+### Coverage directory used by tools like istanbul ###
+coverage/
+
+### Dependency directories ###
+node_modules/
+jspm_packages/
+
+### Optional npm cache directory ###
+.npm
+
+### Optional eslint cache ###
+.eslintcache
+
+### Optional REPL history ###
+.node_repl_history
+
+### Output of 'npm pack' ###
+*.tgz
+
+### Yarn Integrity file ###
+.yarn-integrity
+
+### dotenv environment variables file ###
+.env
+.env.test
+.env.production

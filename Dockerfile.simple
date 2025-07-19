@@ -1,0 +1,28 @@
+# 使用官方Java镜像
+FROM openjdk:17-jre-alpine
+
+# 安装nginx和curl
+RUN apk add --no-cache nginx curl
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制JAR文件（需要先构建）
+COPY target/*.jar app.jar
+
+# 复制nginx配置
+COPY config/nginx.conf.example /etc/nginx/http.d/default.conf
+
+# 创建启动脚本
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'echo "Starting nginx..."' >> /app/start.sh && \
+    echo 'nginx' >> /app/start.sh && \
+    echo 'echo "Starting Spring Boot application..."' >> /app/start.sh && \
+    echo 'java -Xms512m -Xmx1g -jar app.jar --spring.profiles.active=prod' >> /app/start.sh && \
+    chmod +x /app/start.sh
+
+# 暴露端口
+EXPOSE 80 8080
+
+# 启动应用
+CMD ["/app/start.sh"] 

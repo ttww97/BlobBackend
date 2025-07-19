@@ -1,0 +1,16 @@
+version: '2'
+
+services:
+  # 主应用 - 连接到外部MySQL服务器
+  app:
+    build: .
+    container_name: blob-app
+    ports:
+      - "80:80"
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://101.35.137.86:3306/blob_backend?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=dev_user
+      - SPRING_DATASOURCE_PASSWORD=UserPass!456
+      - JAVA_OPTS=-Xms512m -Xmx1g
+    restart: unless-stopped 
