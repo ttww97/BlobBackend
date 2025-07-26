@@ -1,9 +1,9 @@
-package controller;
+package org.example.controller;
 
-import entity.User;
+import org.example.entity.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import service.UserService;
+import org.example.service.UserService;
 
 import java.util.List;
 

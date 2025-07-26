@@ -1,6 +1,6 @@
-package service;
+package org.example.service;
 
-import entity.BlogArticle;
+import org.example.entity.BlogArticle;
 import java.util.List;
 
 public interface BlogArticleService {

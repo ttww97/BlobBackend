@@ -1,6 +1,6 @@
-package mapper;
+package org.example.mapper;
 
-import entity.User;
+import org.example.entity.User;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

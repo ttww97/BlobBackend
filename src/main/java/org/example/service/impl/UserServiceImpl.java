@@ -1,10 +1,10 @@
-package service.impl;
+package org.example.service.impl;
 
-import entity.User;
-import mapper.UserMapper;
+import org.example.entity.User;
+import org.example.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import service.UserService;
+import org.example.service.UserService;
 
 import java.util.List;
 

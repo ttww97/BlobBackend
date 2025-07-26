@@ -1,10 +1,10 @@
-package service.impl;
+package org.example.service.impl;
 
-import entity.BlogArticle;
-import mapper.BlogArticleMapper;
+import org.example.entity.BlogArticle;
+import org.example.mapper.BlogArticleMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import service.BlogArticleService;
+import org.example.service.BlogArticleService;
 
 import java.util.List;
 
