@@ -1,4 +1,7 @@
--- 创建数据库
+-- 安全的数据库初始化脚本
+-- 可以重复执行而不会出错
+
+-- 创建数据库（如果不存在）
 CREATE DATABASE IF NOT EXISTS blob_backend DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- 使用数据库
@@ -65,7 +68,7 @@ CREATE TABLE IF NOT EXISTS article_tags (
     UNIQUE KEY uk_article_tag (article_id, tag_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章标签关联表';
 
--- 插入测试数据（如果不存在则插入）
+-- 安全插入测试数据（使用INSERT IGNORE避免重复键错误）
 INSERT IGNORE INTO users (username, password, email, nickname) VALUES 
 ('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVEFDa', 'admin@example.com', '管理员'),
 ('test_user', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVEFDa', 'test@example.com', '测试用户');
@@ -77,10 +80,10 @@ INSERT IGNORE INTO tags (name, description) VALUES
 ('前端', '前端开发技术'),
 ('后端', '后端开发技术');
 
--- 创建索引
-CREATE INDEX idx_articles_author ON blog_articles(author_id);
-CREATE INDEX idx_articles_status ON blog_articles(status);
-CREATE INDEX idx_articles_created_at ON blog_articles(created_at);
-CREATE INDEX idx_comments_article ON comments(article_id);
-CREATE INDEX idx_comments_user ON comments(user_id);
-CREATE INDEX idx_comments_parent ON comments(parent_id); 
+-- 创建索引（如果不存在）
+CREATE INDEX IF NOT EXISTS idx_articles_author ON blog_articles(author_id);
+CREATE INDEX IF NOT EXISTS idx_articles_status ON blog_articles(status);
+CREATE INDEX IF NOT EXISTS idx_articles_created_at ON blog_articles(created_at);
+CREATE INDEX IF NOT EXISTS idx_comments_article ON comments(article_id);
+CREATE INDEX IF NOT EXISTS idx_comments_user ON comments(user_id);
+CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id); 
