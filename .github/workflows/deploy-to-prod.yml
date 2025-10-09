@@ -47,6 +47,23 @@ jobs:
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
         script: |
-          # 执行我们预先准备好的部署脚本
-          # 将 /tmp/*.war 作为参数传递给它
-          /home/deployer/deploy.sh /tmp/*.war
+          # 定义文件路径变量，方便维护
+          DEPLOY_HOME="/home/deployer"
+          WAR_FILE_PATTERN="$DEPLOY_HOME/*.war"
+          TAR_FILE_PATTERN="$DEPLOY_HOME/*.tar.gz"
+
+          # 1. 在 /home/deployer 目录下找到上传的 .tar.gz 文件并解压
+          #    -C $DEPLOY_HOME 表示解压到 /home/deployer 目录
+          #    --strip-components=1 去掉打包时的 'target/' 目录层级
+          echo "--> Extracting WAR file in $DEPLOY_HOME..."
+          tar -xzf $TAR_FILE_PATTERN -C $DEPLOY_HOME --strip-components=1
+
+          # 2. 执行我们预先准备好的部署脚本
+          #    现在 $WAR_FILE_PATTERN 就能正确匹配到解压出来的WAR文件了
+          echo "--> Running deployment script with WAR file: $WAR_FILE_PATTERN"
+          /home/deployer/deploy.sh $WAR_FILE_PATTERN
+
+          # 3. (推荐) 清理工作：删除解压后的WAR文件和上传的压缩包
+          echo "--> Cleaning up temporary files..."
+          rm -f $WAR_FILE_PATTERN
+          rm -f $TAR_FILE_PATTERN
