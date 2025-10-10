@@ -29,18 +29,18 @@ jobs:
       # -B 表示 Batch mode，避免交互式提示
       # package 表示执行打包操作
 
-    # 第4步：使用 rsync 上传文件
+    # 第4步：使用 rsync 上传文件 (这一步保持不变！)
     - name: Deploy WAR to server via rsync
-      uses: easingthemes/ssh-deploy@v5.0.0 # 这是一个基于 rsync 的流行 Action
+      uses: easingthemes/ssh-deploy@v5.0.0
       with:
         SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
         REMOTE_HOST: ${{ secrets.SERVER_HOST }}
         REMOTE_USER: ${{ secrets.SERVER_USER }}
         SOURCE: "target/*.war"
-        TARGET_DIR: "/tmp"
-        ARGS: "-avz --progress" # rsync 参数，-z表示压缩传输
+        TARGET_DIR: "/tmp" # 即使它没生效，也保留这个配置，万一将来Action更新了行为
+        ARGS: "-avz --progress"
 
-    # 第5步：在服务器上执行部署脚本
+    # 第5步：在服务器上执行部署脚本 (这是需要修改的部分！)
     - name: Tidy up and restart Tomcat
       uses: appleboy/ssh-action@master
       with:
@@ -48,7 +48,27 @@ jobs:
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
         script: |
-          # 注意：rsync 不会打包，所以直接在 /tmp 找 .war 文件即可
-          /home/deployer/deploy.sh /tmp/*.war
-          # 清理
-          rm -f /tmp/*.war
+          # 定义部署用户的主目录，方便维护
+          DEPLOY_HOME="/home/deployer"
+          
+          # 定义 WAR 文件的路径模式，现在指向了正确的位置
+          WAR_FILE_PATTERN="$DEPLOY_HOME/*.war"
+
+          # 检查 WAR 文件是否存在，增加健壮性
+          if ! ls $WAR_FILE_PATTERN 1> /dev/null 2>&1; then
+              echo "错误: 在 $DEPLOY_HOME 中没有找到上传的 .war 文件！"
+              exit 1
+          fi
+
+          echo "--> 在 $DEPLOY_HOME 中找到了 WAR 文件，开始执行部署脚本..."
+          
+          # 执行我们预先准备好的部署脚本
+          # 现在 $WAR_FILE_PATTERN 能够正确匹配到 /home/deployer/BlobBackendService-1.0-SNAPSHOT.war
+          /home/deployer/deploy.sh $WAR_FILE_PATTERN
+
+          echo "--> 部署脚本执行完毕，开始清理临时文件..."
+
+          # 清理工作：在成功部署后，删除用户主目录下的WAR文件
+          rm -f $WAR_FILE_PATTERN
+          
+          echo "--> 清理完成！"
