@@ -6,8 +6,8 @@ cd "$PROJECT_ROOT"
 
 echo "=== API 测试脚本 ==="
 
-# 默认测试本地
-API_BASE="http://localhost:8080"
+# 默认测试本地（后端运行在 8081 端口）
+API_BASE="http://localhost:8081"
 
 # 如果提供了参数，使用指定的地址
 if [ ! -z "$1" ]; then
@@ -72,7 +72,7 @@ echo "=== 测试完成 ==="
 echo ""
 echo "使用说明："
 echo "  本地测试: ./sh/test-api.sh"
-echo "  远程测试: ./sh/test-api.sh http://your-server-ip:8080"
+echo "  远程测试: ./sh/test-api.sh http://your-server-ip:8081"
 echo ""
 echo "API文档："
 echo "  GET  $API_BASE/api/health          - 健康检查"

@@ -45,9 +45,10 @@ echo "2. 构建项目..."
 # 清理并构建
 mvn clean package -DskipTests
 
-# 检查JAR文件
-if [ ! -f "target/BlobBackendService-1.0-SNAPSHOT.jar" ]; then
-    echo "❌ 构建失败，JAR文件未生成"
+# 检查JAR文件（后端独立运行包）
+if [ ! -f "target/BlobBackendService-1.0-SNAPSHOT-backend.jar" ]; then
+    echo "❌ 构建失败，后端JAR文件未生成"
+    echo "提示：请确保使用 mvn clean package -DskipTests 构建项目"
     exit 1
 fi
 
@@ -77,19 +78,19 @@ sleep 2
 # 创建日志目录
 mkdir -p logs
 
-# 启动服务
+# 启动服务（后端独立运行在 8081 端口）
 echo "启动后端服务..."
 nohup java -Xms512m -Xmx1g \
   -Dspring.profiles.active=prod \
-  -jar target/BlobBackendService-1.0-SNAPSHOT.jar \
+  -jar target/BlobBackendService-1.0-SNAPSHOT-backend.jar \
   > logs/app.log 2>&1 &
 
 # 等待服务启动
 echo "等待服务启动..."
 sleep 10
 
-# 检查服务状态
-if curl -s http://localhost:8080/api/health > /dev/null 2>&1; then
+# 检查服务状态（后端运行在 8081 端口）
+if curl -s http://localhost:8081/api/health > /dev/null 2>&1; then
     echo "✅ 后端服务启动成功"
 else
     echo "❌ 后端服务启动失败，查看日志："
@@ -101,16 +102,16 @@ echo ""
 echo "🎉 服务器部署完成！"
 echo ""
 echo "服务信息："
-echo "  本地API: http://localhost:8080"
-echo "  公网API: http://101.35.137.86:8080"
-echo "  健康检查: http://101.35.137.86:8080/api/health"
-echo "  测试接口: http://101.35.137.86:8080/api/checkBackend"
-echo "  用户接口: http://101.35.137.86:8080/api/users"
+echo "  本地API: http://localhost:8081"
+echo "  公网API: http://101.35.137.86:8081"
+echo "  健康检查: http://101.35.137.86:8081/api/health"
+echo "  测试接口: http://101.35.137.86:8081/api/checkBackend"
+echo "  用户接口: http://101.35.137.86:8081/api/users"
 echo "  日志文件: logs/app.log"
 echo ""
 echo "监控命令："
 echo "  查看日志: tail -f logs/app.log"
-echo "  检查状态: curl http://localhost:8080/api/health"
+echo "  检查状态: curl http://localhost:8081/api/health"
 echo "  停止服务: pkill -f BlobBackendService"
 echo ""
 echo "公网访问："
@@ -119,8 +120,8 @@ echo "  配置防火墙: sudo ./sh/firewall-setup.sh"
 echo ""
 echo "API测试："
 echo "  本地测试:"
-echo "    curl -X POST http://localhost:8080/api/checkBackend"
-echo "    curl http://localhost:8080/api/health"
+echo "    curl -X POST http://localhost:8081/api/checkBackend"
+echo "    curl http://localhost:8081/api/health"
 echo "  公网测试:"
-echo "    curl -X POST http://101.35.137.86:8080/api/checkBackend"
-echo "    curl http://101.35.137.86:8080/api/health" 
+echo "    curl -X POST http://101.35.137.86:8081/api/checkBackend"
+echo "    curl http://101.35.137.86:8081/api/health" 

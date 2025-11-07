@@ -46,9 +46,9 @@ fi
 echo ""
 echo "3. 启动后端服务..."
 
-# 检查JAR文件是否存在
-if [ ! -f "build/BlobBackendService-1.0-SNAPSHOT.jar" ]; then
-    echo "❌ JAR文件未找到，请先运行 ./build.sh"
+# 检查JAR文件是否存在（后端独立运行包）
+if [ ! -f "build/BlobBackendService-1.0-SNAPSHOT-backend.jar" ]; then
+    echo "❌ 后端JAR文件未找到，请先运行 ./build.sh"
     exit 1
 fi
 
@@ -56,16 +56,16 @@ fi
 echo "停止现有服务..."
 pkill -f BlobBackendService || true
 
-# 启动服务
+# 启动服务（后端独立运行在 8081 端口）
 echo "启动后端服务..."
-nohup java -jar build/BlobBackendService-1.0-SNAPSHOT.jar --spring.profiles.active=prod > app.log 2>&1 &
+nohup java -jar build/BlobBackendService-1.0-SNAPSHOT-backend.jar --spring.profiles.active=prod > app.log 2>&1 &
 
 # 等待服务启动
 echo "等待服务启动..."
 sleep 10
 
-# 检查服务状态
-if curl -s http://localhost:8080/actuator/health > /dev/null 2>&1; then
+# 检查服务状态（后端运行在 8081 端口）
+if curl -s http://localhost:8081/api/health > /dev/null 2>&1; then
     echo "✅ 后端服务启动成功"
 else
     echo "❌ 后端服务启动失败，查看日志："
@@ -91,16 +91,17 @@ echo ""
 echo "🎉 部署完成！"
 echo ""
 echo "服务信息："
-echo "  后端服务: http://localhost:8080"
+echo "  后端服务: http://localhost:8081"
 echo "  日志文件: app.log"
 echo "  数据库: blob_backend"
 echo ""
 echo "下一步："
-echo "1. 配置Nginx代理前端静态文件"
-echo "2. 设置域名和SSL证书"
-echo "3. 配置防火墙和安全设置"
+echo "1. 配置Nginx代理前端静态文件（端口 8080）"
+echo "2. 配置Nginx反向代理 /api/ 请求到后端（端口 8081）"
+echo "3. 设置域名和SSL证书"
+echo "4. 配置防火墙和安全设置（开放 8080 和 8081 端口）"
 echo ""
 echo "监控命令："
 echo "  查看日志: tail -f app.log"
-echo "  检查状态: curl http://localhost:8080/actuator/health"
+echo "  检查状态: curl http://localhost:8081/api/health"
 echo "  停止服务: pkill -f BlobBackendService" 

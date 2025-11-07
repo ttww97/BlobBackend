@@ -5,7 +5,7 @@ async function testCheckBackend() {
   try {
     console.log('🧪 测试 checkBackend API...');
     
-    const response = await fetch('http://localhost:8080/api/checkBackend', {
+    const response = await fetch('http://localhost:8081/api/checkBackend', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -39,7 +39,7 @@ async function testHealth() {
   try {
     console.log('\n🏥 测试健康检查API...');
     
-    const response = await fetch('http://localhost:8080/api/health');
+    const response = await fetch('http://localhost:8081/api/health');
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);

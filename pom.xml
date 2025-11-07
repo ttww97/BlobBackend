@@ -30,6 +30,7 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <!-- 使用外部 Tomcat 运行 WAR 时，嵌入式 Tomcat 设为 provided -->
+        <!-- 注意：当打包为 jar 时，此依赖会自动包含；打包为 war 时，设为 provided -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-tomcat</artifactId>

@@ -69,8 +69,13 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# 复制JAR包到build目录
-cp target/*.jar build/
+# 复制后端JAR包到build目录（查找 backend 分类器的jar）
+if [ -f "target/BlobBackendService-1.0-SNAPSHOT-backend.jar" ]; then
+    cp target/BlobBackendService-1.0-SNAPSHOT-backend.jar build/
+    echo "✅ 后端JAR包已复制到 build/ 目录"
+else
+    echo "⚠️  未找到后端JAR包，请检查构建配置"
+fi
 
 echo "3. 创建部署包..."
 cd build
@@ -83,9 +88,9 @@ cat > README.md << EOF
 1. 确保服务器已安装Java 17或更高版本
 2. 运行后端服务：
    \`\`\`bash
-   java -jar BlobBackendService-1.0-SNAPSHOT.jar
+   java -jar BlobBackendService-1.0-SNAPSHOT-backend.jar
    \`\`\`
-3. 后端服务将在 http://localhost:8080 启动
+3. 后端服务将在 http://localhost:8081 启动
 
 ## 前端部署
 1. 将frontend目录部署到Web服务器（如Nginx）
@@ -102,6 +107,7 @@ echo "构建完成！"
 echo "构建产物位于 build/ 目录中"
 echo ""
 echo "部署步骤："
-echo "1. 将 build/BlobBackendService-1.0-SNAPSHOT.jar 部署到服务器"
-echo "2. 将 build/frontend/ 目录部署到Web服务器"
-echo "3. 配置Nginx代理和静态文件服务" 
+echo "1. 将 build/BlobBackendService-1.0-SNAPSHOT-backend.jar 部署到服务器并启动（端口 8081）"
+echo "2. 将 build/frontend/ 目录部署到Tomcat（端口 8080）或Nginx"
+echo "3. 配置Nginx反向代理 /api/ 请求到后端（端口 8081）"
+echo "4. 配置防火墙开放 8080 和 8081 端口" 

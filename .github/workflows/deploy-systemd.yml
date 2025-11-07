@@ -1,0 +1,253 @@
+name: Build and Deploy (with systemd)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  JAVA_VERSION: '17'
+  NODE_VERSION: '18'
+
+jobs:
+  build:
+    name: Build Frontend and Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Configure npm registry
+        run: |
+          cd frontend
+          npm config set registry https://mirrors.cloud.tencent.com/npm/
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 60000
+
+      - name: Build project (WAR and JAR)
+        run: |
+          echo "=== 构建项目 ==="
+          mvn clean package -DskipTests
+          
+          echo "=== 生成后端 JAR 包 ==="
+          # 临时修改 pom.xml 中的 tomcat scope 为 compile
+          sed -i 's/<scope>provided<\/scope>/<scope>compile<\/scope>/g' pom.xml
+          
+          # 使用 spring-boot-maven-plugin 生成 jar
+          mvn spring-boot:repackage \
+            -Dspring-boot.repackage.classifier=backend \
+            -Dspring-boot.repackage.finalName=BlobBackendService-1.0-SNAPSHOT-backend
+          
+          # 恢复 pom.xml
+          sed -i 's/<scope>compile<\/scope>/<scope>provided<\/scope>/g' pom.xml
+
+      - name: Verify build artifacts
+        run: |
+          echo "=== 检查构建产物 ==="
+          ls -lh target/*.war target/*.jar || true
+          
+          if [ -f "target/BlobBackendService-1.0-SNAPSHOT.war" ]; then
+            echo "✅ WAR 包生成成功"
+          else
+            echo "❌ WAR 包未生成"
+            exit 1
+          fi
+          
+          if [ -f "target/BlobBackendService-1.0-SNAPSHOT-backend.jar" ]; then
+            echo "✅ JAR 包生成成功"
+          else
+            echo "❌ JAR 包未生成"
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            target/BlobBackendService-1.0-SNAPSHOT.war
+            target/BlobBackendService-1.0-SNAPSHOT-backend.jar
+          retention-days: 7
+
+  deploy:
+    name: Deploy to Server
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: artifacts/
+
+      - name: Deploy to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          source: "artifacts/*"
+          target: "/opt/blob-backend/deploy/"
+          strip_components: 0
+
+      - name: Create systemd service file
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            echo "=== 创建 systemd 服务文件 ==="
+            
+            sudo tee /etc/systemd/system/blob-backend.service > /dev/null <<EOF
+            [Unit]
+            Description=Blob Backend Service
+            After=network.target mysql.service
+
+            [Service]
+            Type=simple
+            User=${{ secrets.SERVER_USER }}
+            WorkingDirectory=/opt/blob-backend
+            ExecStart=/usr/bin/java -Xms512m -Xmx1g -Dspring.profiles.active=prod -jar /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT-backend.jar
+            Restart=always
+            RestartSec=10
+            StandardOutput=append:/opt/blob-backend/logs/app.log
+            StandardError=append:/opt/blob-backend/logs/app.log
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+            
+            sudo systemctl daemon-reload
+
+      - name: Deploy backend JAR with systemd
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            echo "=== 部署后端服务（使用 systemd）==="
+            
+            # 备份旧版本
+            if [ -f "/opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT-backend.jar" ]; then
+              mv /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT-backend.jar \
+                 /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT-backend.jar.backup.$(date +%Y%m%d_%H%M%S)
+            fi
+            
+            # 停止旧服务
+            sudo systemctl stop blob-backend || true
+            sleep 2
+            
+            # 启动新服务
+            sudo systemctl start blob-backend
+            sleep 5
+            
+            # 检查服务状态
+            if sudo systemctl is-active --quiet blob-backend; then
+              echo "✅ 后端服务启动成功（端口 8081）"
+              sudo systemctl status blob-backend --no-pager -l
+            else
+              echo "❌ 后端服务启动失败，查看日志："
+              sudo journalctl -u blob-backend -n 20 --no-pager
+              exit 1
+            fi
+            
+            # 启用开机自启
+            sudo systemctl enable blob-backend
+
+      - name: Deploy frontend WAR
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            echo "=== 部署前端 WAR 包 ==="
+            
+            # 备份旧版本
+            if [ -f "/opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war" ]; then
+              mv /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war \
+                 /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war.backup.$(date +%Y%m%d_%H%M%S)
+            fi
+            
+            # 部署到 Tomcat（端口 8080）
+            TOMCAT_WEBAPPS="/opt/tomcat/webapps"
+            if [ -d "$TOMCAT_WEBAPPS" ]; then
+              # 删除旧的 ROOT 应用
+              rm -rf $TOMCAT_WEBAPPS/ROOT
+              
+              # 复制 WAR 包到 Tomcat
+              cp /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war $TOMCAT_WEBAPPS/ROOT.war
+              
+              echo "✅ 前端 WAR 包已部署到 Tomcat（端口 8080）"
+            else
+              echo "⚠️  Tomcat webapps 目录不存在，请手动部署 WAR 包"
+            fi
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            echo "=== 验证部署 ==="
+            
+            # 检查后端服务
+            echo "检查后端服务（端口 8081）..."
+            if curl -s http://localhost:8081/api/health > /dev/null 2>&1; then
+              echo "✅ 后端服务运行正常"
+              curl -s http://localhost:8081/api/health | head -5
+            else
+              echo "❌ 后端服务未响应"
+            fi
+            
+            # 检查前端服务
+            echo "检查前端服务（端口 8080）..."
+            if curl -s http://localhost:8080/ > /dev/null 2>&1; then
+              echo "✅ 前端服务运行正常"
+            else
+              echo "⚠️  前端服务未响应（可能需要等待 Tomcat 部署完成）"
+            fi
+            
+            echo ""
+            echo "=== 部署完成 ==="
+            echo "前端地址: http://${{ secrets.SERVER_HOST }}:8080"
+            echo "后端地址: http://${{ secrets.SERVER_HOST }}:8081"
+            echo "健康检查: http://${{ secrets.SERVER_HOST }}:8081/api/health"
+            echo ""
+            echo "服务管理命令："
+            echo "  查看状态: sudo systemctl status blob-backend"
+            echo "  查看日志: sudo journalctl -u blob-backend -f"
+            echo "  重启服务: sudo systemctl restart blob-backend"
+            echo "  停止服务: sudo systemctl stop blob-backend"
+

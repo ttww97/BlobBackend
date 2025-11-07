@@ -1,5 +1,5 @@
-// API请求基础配置
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+// API请求基础配置 - 后端独立运行在 8081 端口
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 // 通用请求函数
 async function apiRequest<T>(
