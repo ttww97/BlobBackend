@@ -48,11 +48,17 @@ jobs:
           mvn clean package -DskipTests
           
           echo "=== 生成后端 JAR 包 ==="
-          # 临时修改 pom.xml 中的 tomcat scope 为 compile
+          # 备份 pom.xml
+          cp pom.xml pom.xml.backup
+          
+          # 临时修改 pom.xml：
+          # 1. 将 packaging 从 war 改为 jar
+          # 2. 将 tomcat scope 从 provided 改为 compile
+          sed -i 's/<packaging>war<\/packaging>/<packaging>jar<\/packaging>/g' pom.xml
           sed -i 's/<scope>provided<\/scope>/<scope>compile<\/scope>/g' pom.xml
           
-          # 先执行 package 生成原始 JAR（包含 tomcat 依赖）
-          mvn package -DskipTests
+          # 执行 package 生成原始 JAR（包含 tomcat 依赖）
+          mvn clean package -DskipTests
           
           # 使用 spring-boot-maven-plugin 生成可执行 jar
           mvn spring-boot:repackage \
@@ -60,7 +66,7 @@ jobs:
             -Dspring-boot.repackage.finalName=BlobBackendService-1.0-SNAPSHOT-backend
           
           # 恢复 pom.xml
-          sed -i 's/<scope>compile<\/scope>/<scope>provided<\/scope>/g' pom.xml
+          mv pom.xml.backup pom.xml
 
       - name: Verify build artifacts
         run: |
