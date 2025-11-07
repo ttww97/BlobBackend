@@ -12,8 +12,8 @@ env:
   NODE_VERSION: '18'
 
 jobs:
-  build:
-    name: Build Frontend and Backend
+  build-war:
+    name: Build WAR (Frontend)
     runs-on: ubuntu-latest
     
     steps:
@@ -42,12 +42,47 @@ jobs:
           npm config set fetch-retry-mintimeout 20000
           npm config set fetch-retry-maxtimeout 60000
 
-      - name: Build project (WAR and JAR)
+      - name: Build WAR
         run: |
-          echo "=== 构建项目（生成 WAR）==="
+          echo "=== 构建 WAR 包（前端）==="
           mvn clean package -DskipTests
+
+      - name: Verify WAR
+        run: |
+          if [ -f "target/BlobBackendService-1.0-SNAPSHOT.war" ]; then
+            echo "✅ WAR 包生成成功"
+            ls -lh target/BlobBackendService-1.0-SNAPSHOT.war
+          else
+            echo "❌ WAR 包未生成"
+            exit 1
+          fi
+
+      - name: Upload WAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: war-artifact
+          path: target/BlobBackendService-1.0-SNAPSHOT.war
+          retention-days: 7
+
+  build-jar:
+    name: Build JAR (Backend)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build JAR
+        run: |
+          echo "=== 构建 JAR 包（后端）==="
           
-          echo "=== 生成后端 JAR 包 ==="
           # 备份 pom.xml
           cp pom.xml pom.xml.backup
           
@@ -68,37 +103,26 @@ jobs:
           # 恢复 pom.xml
           mv pom.xml.backup pom.xml
 
-      - name: Verify build artifacts
+      - name: Verify JAR
         run: |
-          echo "=== 检查构建产物 ==="
-          ls -lh target/*.war target/*.jar || true
-          
-          if [ -f "target/BlobBackendService-1.0-SNAPSHOT.war" ]; then
-            echo "✅ WAR 包生成成功"
-          else
-            echo "❌ WAR 包未生成"
-            exit 1
-          fi
-          
           if [ -f "target/BlobBackendService-1.0-SNAPSHOT-backend.jar" ]; then
             echo "✅ JAR 包生成成功"
+            ls -lh target/BlobBackendService-1.0-SNAPSHOT-backend.jar
           else
             echo "❌ JAR 包未生成"
             exit 1
           fi
 
-      - name: Upload artifacts
+      - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
-          path: |
-            target/BlobBackendService-1.0-SNAPSHOT.war
-            target/BlobBackendService-1.0-SNAPSHOT-backend.jar
+          name: jar-artifact
+          path: target/BlobBackendService-1.0-SNAPSHOT-backend.jar
           retention-days: 7
 
   deploy:
     name: Deploy to Server
-    needs: build
+    needs: [build-war, build-jar]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     
@@ -106,10 +130,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download artifacts
+      - name: Download WAR artifact
         uses: actions/download-artifact@v4
         with:
-          name: build-artifacts
+          name: war-artifact
+          path: artifacts/
+
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jar-artifact
           path: artifacts/
 
       - name: Deploy to server
