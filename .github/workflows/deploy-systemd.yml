@@ -133,7 +133,7 @@ jobs:
             Type=simple
             User=${{ secrets.SERVER_USER }}
             WorkingDirectory=/opt/blob-backend
-            ExecStart=/usr/bin/java -Xms512m -Xmx1g -Dspring.profiles.active=prod -jar /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT-backend.jar
+            ExecStart=/usr/lib/jvm/jdk-24.0.1/bin/java -Xms512m -Xmx1g -Dspring.profiles.active=prod -jar /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT-backend.jar
             Restart=always
             RestartSec=10
             StandardOutput=append:/opt/blob-backend/logs/app.log
@@ -198,19 +198,46 @@ jobs:
                  /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war.backup.$(date +%Y%m%d_%H%M%S)
             fi
             
-            # 部署到 Tomcat（端口 8080）
-            TOMCAT_WEBAPPS="/opt/tomcat/webapps"
-            if [ -d "$TOMCAT_WEBAPPS" ]; then
-              # 删除旧的 ROOT 应用
-              rm -rf $TOMCAT_WEBAPPS/ROOT
-              
-              # 复制 WAR 包到 Tomcat
-              cp /opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war $TOMCAT_WEBAPPS/ROOT.war
-              
-              echo "✅ 前端 WAR 包已部署到 Tomcat（端口 8080）"
-            else
-              echo "⚠️  Tomcat webapps 目录不存在，请手动部署 WAR 包"
+            # 设置 Java 环境变量
+            export JAVA_HOME=/usr/lib/jvm/jdk-24.0.1
+            export PATH=$JAVA_HOME/bin:$PATH
+            
+            # 定义 Tomcat 路径
+            TOMCAT_WEBAPPS="/usr/local/tomcat/webapps"
+            TOMCAT_BIN="/usr/local/tomcat/bin"
+            WAR_SOURCE="/opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war"
+            
+            # 检查 WAR 文件是否存在
+            if [ ! -f "$WAR_SOURCE" ]; then
+              echo "❌ WAR 文件不存在: $WAR_SOURCE"
+              exit 1
             fi
+            
+            # 备份旧版本
+            if [ -f "$WAR_SOURCE" ]; then
+              mv "$WAR_SOURCE" \
+                 "/opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war.backup.$(date +%Y%m%d_%H%M%S)"
+            fi
+            
+            # 1. 停止 Tomcat
+            echo "--> 正在停止 Tomcat..."
+            $TOMCAT_BIN/shutdown.sh
+            sleep 8
+            
+            # 2. 清理旧的部署
+            echo "--> 正在清理旧的 ROOT 部署..."
+            rm -rf $TOMCAT_WEBAPPS/ROOT
+            rm -f $TOMCAT_WEBAPPS/ROOT.war
+            
+            # 3. 部署新的 WAR 包为 ROOT.war
+            echo "--> 正在部署新的 WAR 包为 ROOT.war..."
+            cp "$WAR_SOURCE" "$TOMCAT_WEBAPPS/ROOT.war"
+            
+            # 4. 启动 Tomcat
+            echo "--> 正在启动 Tomcat..."
+            $TOMCAT_BIN/startup.sh
+            
+            echo "✅ 前端 WAR 包已部署到 Tomcat（端口 8080）"
 
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.0.3

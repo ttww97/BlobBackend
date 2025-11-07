@@ -5,70 +5,260 @@ on:
   push:
     branches:
       - main  # 或者 master，根据你的主分支名修改
+  workflow_dispatch:
+
+env:
+  JAVA_VERSION: '24'
+  NODE_VERSION: '18'
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest # 使用GitHub提供的最新Ubuntu服务器作为构建环境
+  build:
+    name: Build Frontend and Backend
+    runs-on: ubuntu-latest
 
     steps:
     # 第1步：检出代码
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     # 第2步：设置Java环境
-    - name: Set up JDK 24
-      uses: actions/setup-java@v3
+    - name: Set up JDK ${{ env.JAVA_VERSION }}
+      uses: actions/setup-java@v4
       with:
-        java-version: '24' # 根据你的项目所需Java版本修改
+        java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
-        cache: maven # 缓存Maven依赖，加快后续构建速度
+        cache: maven
 
-    # 第3步：使用Maven构建项目
-    - name: Build with Maven
-      run: mvn -B package --file pom.xml
-      # -B 表示 Batch mode，避免交互式提示
-      # package 表示执行打包操作
-
-    # 第4步：使用 rsync 上传文件 (这一步保持不变！)
-    - name: Deploy WAR to server via rsync
-      uses: easingthemes/ssh-deploy@v5.0.0
+    # 第3步：设置 Node.js 环境
+    - name: Set up Node.js ${{ env.NODE_VERSION }}
+      uses: actions/setup-node@v4
       with:
-        SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
-        REMOTE_HOST: ${{ secrets.SERVER_HOST }}
-        REMOTE_USER: ${{ secrets.SERVER_USER }}
-        SOURCE: "target/*.war"
-        TARGET_DIR: "/tmp" # 即使它没生效，也保留这个配置，万一将来Action更新了行为
-        ARGS: "-avz --progress"
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
 
-    # 第5步：在服务器上执行部署脚本 (这是需要修改的部分！)
-    - name: Tidy up and restart Tomcat
-      uses: appleboy/ssh-action@master
+    # 第4步：配置 npm registry
+    - name: Configure npm registry
+      run: |
+        cd frontend
+        npm config set registry https://mirrors.cloud.tencent.com/npm/
+        npm config set fetch-retries 5
+        npm config set fetch-retry-mintimeout 20000
+        npm config set fetch-retry-maxtimeout 60000
+
+    # 第5步：构建项目（WAR 和 JAR）
+    - name: Build project (WAR and JAR)
+      run: |
+        echo "=== 构建项目 ==="
+        mvn clean package -DskipTests
+        
+        echo "=== 生成后端 JAR 包 ==="
+        # 临时修改 pom.xml 中的 tomcat scope 为 compile
+        sed -i 's/<scope>provided<\/scope>/<scope>compile<\/scope>/g' pom.xml
+        
+        # 使用 spring-boot-maven-plugin 生成 jar
+        mvn spring-boot:repackage \
+          -Dspring-boot.repackage.classifier=backend \
+          -Dspring-boot.repackage.finalName=BlobBackendService-1.0-SNAPSHOT-backend
+        
+        # 恢复 pom.xml
+        sed -i 's/<scope>compile<\/scope>/<scope>provided<\/scope>/g' pom.xml
+
+    # 第6步：验证构建产物
+    - name: Verify build artifacts
+      run: |
+        echo "=== 检查构建产物 ==="
+        ls -lh target/*.war target/*.jar || true
+        
+        if [ -f "target/BlobBackendService-1.0-SNAPSHOT.war" ]; then
+          echo "✅ WAR 包生成成功"
+        else
+          echo "❌ WAR 包未生成"
+          exit 1
+        fi
+        
+        if [ -f "target/BlobBackendService-1.0-SNAPSHOT-backend.jar" ]; then
+          echo "✅ JAR 包生成成功"
+        else
+          echo "❌ JAR 包未生成"
+          exit 1
+        fi
+
+    # 第7步：上传构建产物
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts
+        path: |
+          target/BlobBackendService-1.0-SNAPSHOT.war
+          target/BlobBackendService-1.0-SNAPSHOT-backend.jar
+        retention-days: 7
+
+  deploy:
+    name: Deploy to Server
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 第1步：检出代码
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 第2步：下载构建产物
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifacts
+        path: artifacts/
+
+    # 第3步：上传文件到服务器
+    - name: Deploy to server
+      uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ secrets.SERVER_HOST }}
         username: ${{ secrets.SERVER_USER }}
         key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
-        script: |
-          # 定义部署用户的主目录，方便维护
-          DEPLOY_HOME="/home/deployer"
-          
-          # 定义 WAR 文件的路径模式，现在指向了正确的位置
-          WAR_FILE_PATTERN="$DEPLOY_HOME/*.war"
+        port: ${{ secrets.SERVER_PORT || 22 }}
+        source: "artifacts/*"
+        target: "/opt/blob-backend/deploy/"
+        strip_components: 0
 
-          # 检查 WAR 文件是否存在，增加健壮性
-          if ! ls $WAR_FILE_PATTERN 1> /dev/null 2>&1; then
-              echo "错误: 在 $DEPLOY_HOME 中没有找到上传的 .war 文件！"
-              exit 1
+    # 第4步：部署后端 JAR
+    - name: Deploy backend JAR
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SERVER_PORT || 22 }}
+        script: |
+          echo "=== 部署后端服务 ==="
+          
+          # 设置 Java 环境变量
+          export JAVA_HOME=/usr/lib/jvm/jdk-24.0.1
+          export PATH=$JAVA_HOME/bin:$PATH
+          
+          # 停止现有服务
+          pkill -f BlobBackendService || true
+          sleep 2
+          
+          # 创建日志目录
+          mkdir -p /opt/blob-backend/logs
+          
+          # 备份旧版本
+          JAR_FILE="/opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT-backend.jar"
+          if [ -f "$JAR_FILE" ]; then
+            mv "$JAR_FILE" \
+               "/opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT-backend.jar.backup.$(date +%Y%m%d_%H%M%S)"
+          fi
+          
+          # 检查 JAR 文件是否存在
+          if [ ! -f "$JAR_FILE" ]; then
+            echo "❌ JAR 文件不存在: $JAR_FILE"
+            exit 1
+          fi
+          
+          # 启动后端服务（端口 8081）
+          echo "--> 正在启动后端服务（端口 8081）..."
+          nohup $JAVA_HOME/bin/java -Xms512m -Xmx1g \
+            -Dspring.profiles.active=prod \
+            -jar "$JAR_FILE" \
+            > /opt/blob-backend/logs/app.log 2>&1 &
+          
+          # 等待服务启动
+          sleep 10
+          
+          # 检查服务状态
+          if curl -s http://localhost:8081/api/health > /dev/null 2>&1; then
+            echo "✅ 后端服务启动成功（端口 8081）"
+          else
+            echo "❌ 后端服务启动失败，查看日志："
+            tail -20 /opt/blob-backend/logs/app.log
+            exit 1
           fi
 
-          echo "--> 在 $DEPLOY_HOME 中找到了 WAR 文件，开始执行部署脚本..."
+    # 第5步：部署前端 WAR
+    - name: Deploy frontend WAR
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SERVER_PORT || 22 }}
+        script: |
+          echo "=== 部署前端 WAR 包 ==="
           
-          # 执行我们预先准备好的部署脚本
-          # 现在 $WAR_FILE_PATTERN 能够正确匹配到 /home/deployer/BlobBackendService-1.0-SNAPSHOT.war
-          /home/deployer/deploy.sh $WAR_FILE_PATTERN
-
-          echo "--> 部署脚本执行完毕，开始清理临时文件..."
-
-          # 清理工作：在成功部署后，删除用户主目录下的WAR文件
-          rm -f $WAR_FILE_PATTERN
+          # 设置 Java 环境变量
+          export JAVA_HOME=/usr/lib/jvm/jdk-24.0.1
+          export PATH=$JAVA_HOME/bin:$PATH
           
-          echo "--> 清理完成！"
+          # 定义 Tomcat 路径
+          TOMCAT_WEBAPPS="/usr/local/tomcat/webapps"
+          TOMCAT_BIN="/usr/local/tomcat/bin"
+          WAR_SOURCE="/opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war"
+          
+          # 检查 WAR 文件是否存在
+          if [ ! -f "$WAR_SOURCE" ]; then
+            echo "❌ WAR 文件不存在: $WAR_SOURCE"
+            exit 1
+          fi
+          
+          # 备份旧版本
+          if [ -f "$WAR_SOURCE" ]; then
+            mv "$WAR_SOURCE" \
+               "/opt/blob-backend/deploy/BlobBackendService-1.0-SNAPSHOT.war.backup.$(date +%Y%m%d_%H%M%S)"
+          fi
+          
+          # 1. 停止 Tomcat
+          echo "--> 正在停止 Tomcat..."
+          $TOMCAT_BIN/shutdown.sh
+          sleep 8
+          
+          # 2. 清理旧的部署
+          echo "--> 正在清理旧的 ROOT 部署..."
+          rm -rf $TOMCAT_WEBAPPS/ROOT
+          rm -f $TOMCAT_WEBAPPS/ROOT.war
+          
+          # 3. 部署新的 WAR 包为 ROOT.war
+          echo "--> 正在部署新的 WAR 包为 ROOT.war..."
+          cp "$WAR_SOURCE" "$TOMCAT_WEBAPPS/ROOT.war"
+          
+          # 4. 启动 Tomcat
+          echo "--> 正在启动 Tomcat..."
+          $TOMCAT_BIN/startup.sh
+          
+          echo "✅ 前端 WAR 包已部署到 Tomcat（端口 8080）"
+
+    # 第6步：验证部署
+    - name: Verify deployment
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SERVER_PORT || 22 }}
+        script: |
+          echo "=== 验证部署 ==="
+          
+          # 检查后端服务
+          echo "检查后端服务（端口 8081）..."
+          if curl -s http://localhost:8081/api/health > /dev/null 2>&1; then
+            echo "✅ 后端服务运行正常"
+            curl -s http://localhost:8081/api/health | head -5
+          else
+            echo "❌ 后端服务未响应"
+          fi
+          
+          # 检查前端服务
+          echo "检查前端服务（端口 8080）..."
+          if curl -s http://localhost:8080/ > /dev/null 2>&1; then
+            echo "✅ 前端服务运行正常"
+          else
+            echo "⚠️  前端服务未响应（可能需要等待 Tomcat 部署完成）"
+          fi
+          
+          echo ""
+          echo "=== 部署完成 ==="
+          echo "前端地址: http://${{ secrets.SERVER_HOST }}:8080"
+          echo "后端地址: http://${{ secrets.SERVER_HOST }}:8081"
+          echo "健康检查: http://${{ secrets.SERVER_HOST }}:8081/api/health"
