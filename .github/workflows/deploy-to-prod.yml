@@ -49,14 +49,17 @@ jobs:
     # 第5步：构建项目（WAR 和 JAR）
     - name: Build project (WAR and JAR)
       run: |
-        echo "=== 构建项目 ==="
+        echo "=== 构建项目（生成 WAR）==="
         mvn clean package -DskipTests
         
         echo "=== 生成后端 JAR 包 ==="
         # 临时修改 pom.xml 中的 tomcat scope 为 compile
         sed -i 's/<scope>provided<\/scope>/<scope>compile<\/scope>/g' pom.xml
         
-        # 使用 spring-boot-maven-plugin 生成 jar
+        # 先执行 package 生成原始 JAR（包含 tomcat 依赖）
+        mvn package -DskipTests
+        
+        # 使用 spring-boot-maven-plugin 生成可执行 jar
         mvn spring-boot:repackage \
           -Dspring-boot.repackage.classifier=backend \
           -Dspring-boot.repackage.finalName=BlobBackendService-1.0-SNAPSHOT-backend
